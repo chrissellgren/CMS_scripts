@@ -4,8 +4,7 @@ import sys
 ROOT.gROOT.SetBatch(True) #stop the canvas being drawn
 
 # Open the ROOT file
-file = ROOT.TFile("Ntuple.root")
-layer = "all" # -1 default for all layers
+file = ROOT.TFile("Ntuple_2_369873.root")
 
 # Check if the file is successfully opened
 if file.IsOpen():
@@ -16,35 +15,22 @@ else:
 
 tree = file.Get("clustTree")
 branch = tree.GetBranch("clust")
-leaf = branch.GetLeaf("charge")
+leaf = branch.GetLeaf("charge_corr")
+leaf2 = branch.GetLeaf("charge")
 layerbranch = tree.GetBranch("mod_on")
 layerleaf = layerbranch.GetLeaf("layer")
 
-h = ROOT.TH1F("histogram", "Charge deposited on all layers", 100, 0, 200e3) 
-h1 = ROOT.TH1F("histogram", "Charge depo on layer 1", 100, 0, 200e3)
-h2 = ROOT.TH1F("histogram2", "Charge depo on layer 2", 100, 0, 200e3) 
-h3 = ROOT.TH1F("histogram3", "Charge depo on layer 3", 100, 0, 200e3) 
-h4 = ROOT.TH1F("histogram4", "Charge depo on layer 4", 100, 0, 200e3)
 
-hlist = [h, h1, h2, h3, h4]
-hlist = [h]
+h2 = ROOT.TH1F("histogram", "Charge deposited on all layers, run 369/873, qscale adjusted", 100, 0, 200e3) 
+h = ROOT.TH1F("histogram", "Charge deposited on all layers, qscale adjusted", 100, 0, 200e3) 
 
 # Loop over the entries in the tree and fill the histogram
 for entry in range(tree.GetEntries()):
     tree.GetEntry(entry)
     value = leaf.GetValue()
+    value2 = leaf2.GetValue()
     h.Fill(value)
-    layer = layerleaf.GetValue()
-    if (layer==1):
-        h1.Fill(value)
-    elif (layer==2):
-        h2.Fill(value)
-    elif (layer==3):
-        h3.Fill(value)
-    elif (layer==4):
-        h4.Fill(value)
-    else:
-        pass
+    h2.Fill(value2)
 
 print("Making fxns...")
 
@@ -61,20 +47,19 @@ gauss_func.SetParameter(1, 1e3)  # Sigma of the Gaussian
 print("Doing easy fits...")
 
 # Fit the histogram with each of the functions.
-h.Draw()
 h.Fit(gauss_func, "R")
 h.Fit(landau_func, "R+")
-
-print("helllooooo")
 
 # get params to feed to to the sensitive convolution
 gaussfit = h.GetFunction("gauss_func")
 landaufit = h.GetFunction("landau_func")
 # draw the first two fits happens implicitly with the fit
-gaussfit.SetLineColor(ROOT.kRed)
+gaussfit.SetLineColor(ROOT.kOrange)
 landaufit.SetLineColor(ROOT.kViolet)
 landaufit.SetLineWidth(3)
 gaussfit.SetLineWidth(3)
+gaussfit.Draw()
+landaufit.Draw()
 
 # pull params
 g_mean = gaussfit.GetParameter(0)
@@ -90,39 +75,43 @@ f_conv.SetNofPointsFFT(1000)
 f_conv.Draw("same")
 
 f = ROOT.TF1("f", f_conv, 0.0, 300e3, f_conv.GetNpar())
-f.SetParameters(10e3,l_mpv, l_sig, g_mean, g_sig)
+f.SetParameters(0.1,l_mpv, l_sig, g_mean, g_sig)
 
-for i,h in enumerate(hlist):
-    print("Drawing canvas...")
-    # Create a canvas and draw the histogram
-    canvas = ROOT.TCanvas("canvas", "canvas", 1500, 1000)
-    h.Draw()
-    h.SetLineWidth(3)
-    h.Fit("f","R+")
-    vavfit = h.GetFunction("f")
-    vavfit.SetLineColor(ROOT.kGreen)
-    vavfit.SetLineWidth(4)
-    MPV = vavfit.GetMaximumX()
-    line = ROOT.TLine(MPV,0,MPV,vavfit(MPV))
-    line.SetLineColor(ROOT.kRed)
-    line.SetLineWidth(4)
-    line.Draw()
+print("Drawing canvas...")
+# Create a canvas and draw the histogram
+canvas = ROOT.TCanvas("canvas", "canvas", 1500, 1000)
+h2.Draw()
+h2.SetLineColor(ROOT.kBlack)
+h.Draw("same")
+h.SetLineWidth(3)
+h.Fit("f","R+")
 
-    legend = ROOT.TLegend(0.70, 0.5, 0.98, 0.75)
-    legend.AddEntry(h, "Charge Depo", "l")  # "l" for line
-    #legend.AddEntry(landaufit, "Landau Fit", "l")
-    #legend.AddEntry(gaussfit, "Gauss Fit", "l")
-    legend.AddEntry(vavfit, "Convolution Fit", "l")
-    legend.AddEntry(line, "MPV of Convolution", "l")
-    legend.Draw()
+vavfit = h.GetFunction("f")
+vavfit.SetLineColor(ROOT.kGreen)
+vavfit.SetLineWidth(4)
 
-    # Add MPV text using TText
-    mpv_text = ROOT.TText(100e3, vavfit(MPV) , "MPV: {:.2f}".format(MPV))
-    mpv_text.SetTextSize(0.06)
-    mpv_text.SetTextAlign(22)  # Center align text
-    mpv_text.Draw()
+MPV = vavfit.GetMaximumX()
+line = ROOT.TLine(MPV,0,MPV,vavfit(MPV))
+line.SetLineColor(ROOT.kRed)
+line.SetLineWidth(4)
+line.Draw()
 
-    canvas.SaveAs("plots/chargedepo_withconvolution_layer%d.png" % i)
+legend = ROOT.TLegend(0.70, 0.45, 0.98, 0.75)
+legend.AddEntry(h2, "Original charge dep", "l")  # "l" for line
+legend.AddEntry(h, "Corrected charge", "l")  # "l" for line
+legend.AddEntry(landaufit, "Landau Fit", "l")
+legend.AddEntry(gaussfit, "Gauss Fit", "l")
+legend.AddEntry(vavfit, "Convolution Fit", "l")
+legend.AddEntry(line, "MPV of Convolution", "l")
+legend.Draw()
+
+# Add MPV text using TText
+mpv_text = ROOT.TText(100e3, vavfit(MPV) , "MPV: {:.2f}".format(MPV))
+mpv_text.SetTextSize(0.06)
+mpv_text.SetTextAlign(22)  # Center align text
+mpv_text.Draw()
+
+canvas.SaveAs("plots/13_newrun_corrected_withfit.png")
     
 
 # draw a TLine where the MPV should be for the vav fit
